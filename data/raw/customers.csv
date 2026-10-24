@@ -1,0 +1,11 @@
+customer_id,customer_name,region,email
+C001,John Smith,East,john@example.com
+C002,Sarah Johnson,West,sarah@example.com
+C003,David Lee,North,david@example.com
+C004,Emma Wilson,South,emma@example.com
+C005,Michael Brown,East,michael@example.com
+C006,Olivia Davis,West,olivia@example.com
+C007,James Miller,North,james@example.com
+C008,Sophia Taylor,South,sophia@example.com
+C009,Daniel Anderson,,daniel@example.com
+C010,Ava Thomas,East,ava@example.com
