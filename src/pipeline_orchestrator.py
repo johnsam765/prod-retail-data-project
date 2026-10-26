@@ -38,7 +38,7 @@ def run_pipeline():
         current_stage="BATCH_VALIDATION(BRONZE)"
         sales_bronze_count,customers_bronze_count=run_bronze(spark,pipeline_run_id)
         source_batch_id=get_source_batch_id(spark,SALES_BRONZE_PATH,pipeline_run_id)
-        audit_record["bronze_count"]=sales_bronze_count+customers_bronze_count
+        audit_record["bronze_count"]=sales_bronze_count
         print("Bronze layer ran successfully")
         current_stage="DATA QUALITY(SILVER)"
         silver_result=run_silver(spark,pipeline_run_id)

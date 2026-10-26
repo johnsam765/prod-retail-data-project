@@ -10,7 +10,7 @@ def get_source_batch_id(spark,path,pipeline_run_id):
     .filter(F.col("pipeline_run_id")==pipeline_run_id)
     .select("source_batch_id").distinct().limit(2).collect())
     if len(batch_ids)!=1:
-        raise RuntimeException("Multiple Batch ids found")
+        raise RuntimeError("Multiple Batch ids found")
     source_batch_id=batch_ids[0]["source_batch_id"]
     if source_batch_id is None:
         raise RuntimeError("Source batch ID cannot be NULL")
