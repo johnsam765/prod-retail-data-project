@@ -1,0 +1,22 @@
+# Python virtual environment
+.venv/
+venv/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+
+# Spark and Delta outputs
+data/bronze/
+data/silver/
+data/gold/
+data/quarantine/
+data/audit/
+
+# Local Spark files
+.sparkStaging/
+derby.log
+metastore_db/
+
+# Local configuration
+.env

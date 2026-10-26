@@ -1,5 +1,6 @@
 from uuid import uuid4
 from datetime import datetime, timezone
+from pyspark.sql import functions as F
 
 def generate_pipeline_run_id():
     return str(uuid4())

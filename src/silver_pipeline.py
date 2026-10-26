@@ -3,6 +3,7 @@ from spark_session import create_spark_session
 from pathlib import Path
 from run_identity import get_source_batch_id
 from pyspark.sql.window import Window
+from run_identity import get_source_batch_id
 
 ROOT=Path(__file__).resolve().parent.parent
 SALES_BRONZE_PATH=ROOT/"data"/"bronze"/"sales"
@@ -12,13 +13,13 @@ QUARANTINE_PATH=ROOT/"data"/"quarantine"/"sales"
 
 
 
-def run_silver(spark):
+def run_silver(spark,pipeline_run_id):
+    source_batch_id=get_source_batch_id(spark,SALES_BRONZE_PATH,pipeline_run_id)
     customer_df=(spark.read.format("delta").load(str(CUSTOMER_BRONZE_PATH))
     .dropDuplicates(["customer_id"])
     .select("customer_id","customer_name","region","email")
     .withColumn("_customer_found",F.lit(1)))
     sales_df=(spark.read.format("delta").load(str(SALES_BRONZE_PATH))
-    .filter(F.col("source_batch_id")==source_batch_id)
     .withColumn("_parsed_date",F.expr("try_cast(order_date as date)"))
     .withColumn("_parsed_amount",F.expr("try_cast(amount as decimal(12,2))"))
     .withColumn("_row_id",F.monotonically_increasing_id()))
