@@ -1,0 +1,356 @@
+## Capstone Day 1 — Bronze Ingestion and Spark Execution
+
+### Project
+Started a new production-style retail data platform on Ubuntu.
+
+Implemented reusable Bronze ingestion for:
+- sales.csv
+- customer.csv
+
+### Bronze design
+Bronze preserves source values using explicit string-based schemas where later
+validation is required.
+
+Added lineage metadata:
+- pipeline_run_id
+- ingestion_timestamp
+- source_path
+
+Both datasets belonging to the same pipeline execution share the same
+pipeline_run_id.
+
+### Spark concepts reinforced
+- DataFrame transformations are lazily evaluated.
+- withColumn() is normally a narrow transformation.
+- Actions such as show() and write() trigger execution.
+- Multiple actions can cause lineage recomputation.
+- One partition generally corresponds to one task within a stage.
+- Number of partitions determines available task-level parallelism.
+- Executor cores/task slots determine how many tasks can run simultaneously.
+- More available cores do not help when the DataFrame has too few partitions.
+
+### Delta Lake
+A Delta table consists of:
+- Parquet data files containing the records.
+- _delta_log containing transactional table metadata and version history.
+
+Spark must be configured with Delta support to read/write Delta tables.
+
+### Issue discovered
+The CSV header was accidentally ingested as a data row because the reader
+configuration used the wrong header option.
+
+Correct:
+.option("header", True)
+
+This reinforced that successful pipeline execution does not guarantee correct
+data.
+
+## Capstone Day 2 — Silver Parsing and Initial Data Quality
+
+### Silver input
+- Silver reads the persisted Bronze Delta table.
+- Bronze business fields such as order_date and amount are intentionally stored
+  as strings so the original source values are preserved.
+
+### Safe parsing
+Created typed Silver columns:
+- parsed_order_date -> DATE
+- parsed_amount -> DECIMAL(12,2)
+
+Used try_cast so malformed values become NULL instead of failing the pipeline.
+
+Examples:
+- "2026-10-01" -> valid DATE
+- "bad-date" -> NULL
+- "500.00" -> DECIMAL 500.00
+- "abc" -> NULL
+
+### Data-quality rules
+Created rejection_reason:
+- NULL parsed_order_date -> INVALID_ORDER_DATE
+- NULL parsed_amount -> INVALID_AMOUNT
+
+Split the DataFrame into:
+- valid_df: rejection_reason IS NULL
+- quarantine_df: rejection_reason IS NOT NULL
+
+Current results:
+- O001 -> valid
+- O002 -> valid
+- O003 -> valid
+- O004 -> INVALID_ORDER_DATE
+- O005 -> INVALID_AMOUNT
+
+Cancelled is a valid business status and is not automatically a data-quality
+failure.
+
+### DataFrame lesson
+select() does not permanently remove columns from the original DataFrame.
+
+quarantine_df still contains all columns. Using:
+
+quarantine_df.select(...).show()
+
+only creates a projection for that operation/display.
+
+### Current state
+Silver and Quarantine have not yet been persisted to Delta.
+More validation rules will be added before the final write.
+
+## Capstone Day 3 — Customer Join, Deduplication and Silver Persistence
+
+### Customer enrichment
+- Read the Bronze customer Delta table.
+- Customer lookup grain should be one row per customer_id.
+- Duplicate customer_id values can cause join fan-out and inflate downstream Gold aggregates.
+- Used a LEFT JOIN because Sales is the driving dataset.
+- An INNER JOIN could silently remove sales rows whose customer_id does not exist.
+
+### Customer validation
+Added a technical marker:
+
+_customer_found = 1
+
+After a LEFT JOIN:
+- matched customer -> _customer_found = 1
+- unmatched customer -> _customer_found = NULL
+
+This allows CUSTOMER_NOT_FOUND to be detected independently from a missing
+province or customer_name.
+
+### Duplicate order handling
+Used a Window:
+
+partitionBy(order_id)
+orderBy(ingestion_timestamp DESC, _row_id DESC)
+
+Added ROW_NUMBER to rank duplicate orders.
+
+- _order_rank = 1 -> preferred/current row
+- _order_rank > 1 -> DUPLICATE_ORDER_ID
+
+ingestion_timestamp is the primary ordering field.
+_row_id is currently a technical tie-breaker only.
+
+A proper production source would ideally provide:
+- updated_at
+- event timestamp
+- sequence number
+- source version
+- Kafka offset / CDC sequence
+
+### Validation priority
+Current primary rejection priority:
+
+1. DUPLICATE_ORDER_ID
+2. INVALID_ORDER_DATE
+3. INVALID_AMOUNT
+4. CUSTOMER_NOT_FOUND
+
+Because chained when() conditions return the first match, a row with multiple
+problems currently stores only one primary rejection reason.
+
+### Final Silver
+Persisted valid records to Silver Delta using trusted business columns.
+
+Current Silver:
+- O001
+- O002
+- O003
+
+O003 is Cancelled but is still valid Silver data.
+
+### Quarantine
+Persisted rejected records to Quarantine Delta while preserving:
+- original raw values
+- parsed values
+- customer enrichment
+- rejection reason
+- pipeline lineage metadata
+
+Current Quarantine:
+- O004 -> INVALID_ORDER_DATE
+- O005 -> INVALID_AMOUNT
+
+### Reconciliation
+Current counts:
+
+Bronze Sales = 5
+Silver = 3
+Quarantine = 2
+
+3 + 2 = 5
+
+Reconciliation checks whether all incoming records were accounted for.
+
+It can help identify:
+- silently dropped rows
+- accidental duplication
+- join fan-out
+- incorrect filters
+- records that were never classified
+
+### Reconciliation vs Audit
+Reconciliation answers:
+
+"Does the data balance?"
+
+Audit answers:
+
+"What happened during this pipeline run?"
+
+The reconciliation result can later be stored as one field in the audit record.
+
+## Day 4 — October 13, 2026
+
+### Implemented
+- Enforced Bronze = Silver + Quarantine reconciliation.
+- Built Gold province_sales aggregation.
+- Filtered Completed orders.
+- Calculated count, sum and average by province.
+- Persisted Gold as Delta.
+- Created audit_pipeline.py.
+- Added SILVER_SUCCESS / SILVER_FAILED status.
+- Recorded run ID, counts, timestamp and reconciliation result.
+
+### Spark execution concepts
+- Filter and Project are narrow transformations.
+- groupBy requires a shuffle.
+- Partial HashAggregate reduces data before shuffle.
+- Exchange represents shuffle.
+- Final HashAggregate combines partial results.
+- Understood filter pushdown, column pruning and AQE.
+
+### Production design
+- A failed pipeline must still generate an audit record.
+- Centralized orchestration can capture exceptions from every stage.
+- Exceptions should be re-raised after auditing.
+- Audit append preserves historical executions.
+
+### Verified
+Bronze = 5
+Silver = 3
+Quarantine = 2
+Gold = 2 province groups
+Reconciliation = PASSED
+
+## Session 5 — October 21, 2026
+### Pipeline Orchestration and Centralized Auditing
+
+Implemented:
+- Industry-standard pipeline_run_id generation using UUID.
+- Source batch identification with legacy Bronze compatibility.
+- Refactored Silver and Gold to return processing results.
+- Created pipeline_orchestrator.py.
+- Implemented centralized try/except/else/finally.
+- Created pipeline-level Delta audit with an explicit schema.
+- Captured pipeline status, failed stage, error details and counts.
+
+Verified:
+- Successful Silver-to-Gold execution.
+- Failed execution caused by a NameError.
+- Controlled GOLD failure using SIMULATE_GOLD_FAILURE.
+- All three executions recorded in audit history.
+- Failed GOLD execution recorded silver_count=3 and gold_count=NULL.
+
+Key learning:
+- except catches exceptions.
+- raise propagates failures to the caller.
+- else executes after successful try completion.
+- finally handles cleanup.
+- Failed audit writes must not be confused with processing failures.
+- Retryable audit writes must be idempotent.
+- NULL and zero have different meanings in audit metrics.
+
+Production limitations:
+- Bronze still uses legacy pipeline_run_id as source batch identifier.
+- Silver currently processes all Bronze records.
+- Silver, Quarantine and Gold writes are not one atomic transaction.
+- Audit append can create duplicates on retries.
+- Automated recovery and fault-tolerant auditing are not yet implemented.
+
+## October 26, 2026 — Production Retail Pipeline Validation
+
+### Project progress
+- Expanded the retail dataset to 19 sales records per ingestion.
+- Inspected Bronze Delta history containing 228 sales records across 12 batches.
+- Inspected Bronze Customers containing 110 records across 11 batches.
+- Verified `pipeline_run_id` and `source_batch_id` are separate identifiers.
+- Corrected Silver to select the intended Sales and Customer batch.
+- Corrected the `RuntimeException` typo to `RuntimeError`.
+- Moved reconciliation validation before Silver and Quarantine publishing.
+
+### Verified execution
+- Selected Bronze Sales: 19
+- Selected Bronze Customers: 10
+- Silver valid records: 10
+- Quarantine records: 9
+- Reconciliation: PASSED
+
+### Root-cause investigation
+Previously, Silver processed all 228 Bronze Sales records because it read the entire appended Delta table without filtering to the intended batch.
+
+The Window ranked repeated orders across historical ingestions, causing Quarantine to contain 218 records.
+
+After applying the batch filters and rerunning Silver:
+- Valid Silver remained at 10.
+- Quarantine decreased from 218 to 9.
+- The selected source batch reconciled correctly.
+
+### Concepts reinforced
+- Latest Delta version is not the same as latest source batch.
+- LEFT JOIN preserves unmatched sales.
+- Duplicate customer lookup keys cause join fan-out.
+- Window row numbering requires deterministic business ordering.
+- Validation-rule precedence determines the primary rejection reason.
+- Count-based reconciliation alone does not prove record-level correctness.
+- Independent Delta table writes are not atomic together.
+- Changes to Python code do not automatically update persisted Delta tables.
+
+---
+
+## October 28, 2026 — Gold-Only Recovery and Delta Time Travel
+
+### Implemented
+- Added optional Silver Delta version selection using `versionAsOf`.
+- Preserved filtering by `source_batch_id`.
+- Added validation for missing Silver batch input.
+- Added an optional Gold output destination.
+- Added an isolated `data/gold/recovery_test` destination.
+- Corrected DataFrameReader variable and option usage.
+- Identified and corrected an accidental active-Gold output-routing issue.
+
+### Verified
+- Silver Delta version 8 contains the selected source batch.
+- Source batch: `20261024_042204_ab58a267`.
+- Silver input contains 10 valid records.
+- Gold produces four regional summaries.
+- Completed sales count: 8.
+- Total completed sales: $2,776.50.
+- Gold recovery calculation successfully executed.
+
+### Important learning
+- Delta `versionAsOf` selects a committed table snapshot.
+- `source_batch_id` selects the intended source data within that snapshot.
+- A new recovery execution should reuse the original input batch.
+- A historical recovery must not accidentally overwrite active Gold.
+- A Delta overwrite can preserve identical business results while creating another table version.
+- An existing order updated from $100 to $150 contributes a net increase of $50 to cumulative revenue, not $150.
+- Business-result idempotency differs from execution-level and transaction-level idempotency.
+
+### Remaining verification
+- Execute recovery again against the same Silver version.
+- Confirm identical regional results using `exceptAll()`.
+- Verify active Gold version is unchanged by isolated recovery.
+- Verify the recovery Delta version advances following another overwrite.
+- Record the Silver input version and recovery execution identity in durable audit metadata.
+
+### Current project limitations
+- Bronze ingestion is not yet idempotent.
+- Silver still uses current-batch overwrite rather than incremental MERGE.
+- Order deduplication lacks a durable source business sequence.
+- Silver and Quarantine publishing is not atomic across both tables.
+- Pipeline audit uses append and is not retry-safe.
+- Gold recovery is callable manually, but is not yet integrated into an orchestrated recovery workflow.
+- Automated integration tests are not yet implemented.

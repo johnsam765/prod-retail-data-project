@@ -7,12 +7,27 @@ SILVER_SALES_PATH=ROOT/"data"/"silver"/"sales"
 GOLD_SALES_PATH=ROOT/"data"/"gold"/"sales"
 
 
-def run_gold(spark,source_batch_id):
+def run_gold(spark,source_batch_id,source_version=None,output_path=None):
+    if source_version is not None and output_path is None:
+        raise RuntimeError("Historical gold recovery requires explicit output path")
+    target_path = (
+        Path(output_path)
+        if output_path is not None
+        else GOLD_SALES_PATH
+    )
+    sales_reader=spark.read.format("delta")
+    if source_version is not None:
+        sales_reader=sales_reader.option("versionAsOf",source_version)
+
     sales_df = (
-        spark.read.format("delta")
+        sales_reader
         .load(str(SILVER_SALES_PATH))
         .filter(F.col("source_batch_id") == source_batch_id)
     )
+
+    if sales_df.limit(1).count()==0:
+        raise RuntimeError(f"No Silver records found for batch "
+            f"{source_batch_id} at version {source_version}")
 
     gold_df = (
         sales_df
@@ -35,11 +50,11 @@ def run_gold(spark,source_batch_id):
     .format("delta") \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
-    .save(str(GOLD_SALES_PATH))
+    .save(str(target_path))
 
     persisted_gold_df = (
         spark.read.format("delta")
-        .load(str(GOLD_SALES_PATH))
+        .load(str(target_path))
     )
 
     gold_count = persisted_gold_df.count()
@@ -54,7 +69,7 @@ def run_gold(spark,source_batch_id):
 
 if __name__=="__main__":
     spark=create_spark_session()
-    source_batch_id="20261023_154324_e644c670"
-    run_gold(spark,source_batch_id)
+    source_batch_id="20261024_042204_ab58a267"
+    run_gold(spark,source_batch_id,8,ROOT/"data"/"gold"/"recovery_test")
     if spark is not None:
         spark.stop()

@@ -100,9 +100,6 @@ def run_silver(spark,pipeline_run_id):
     "source_batch_id",
     "pipeline_run_id"
     )
-    print("Writing silver and quarantine delta")
-    silver_final_df.write.format("delta").mode("overwrite").save(str(SILVER_PATH))
-    quarantine_final_df.write.format("delta").mode("overwrite").save(str(QUARANTINE_PATH))
     #Reconciliation check
     bronze_df_count=sales_df.count()
     silver_final_df_count=silver_final_df.count()
@@ -114,6 +111,9 @@ def run_silver(spark,pipeline_run_id):
         f"Silver={silver_final_df_count}, "
         f"Quarantine={quarantine_final_df_count}")
     print("RECONCILIATION PASSED")
+    print("Writing silver and quarantine delta")
+    silver_final_df.write.format("delta").mode("overwrite").save(str(SILVER_PATH))
+    quarantine_final_df.write.format("delta").mode("overwrite").save(str(QUARANTINE_PATH))
     print("Silver pipeline executed successfully")
     print({
     "source_batch_id":source_batch_id,
