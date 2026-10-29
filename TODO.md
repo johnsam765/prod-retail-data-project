@@ -1,131 +1,247 @@
-# Production Retail Data Platform — Development Roadmap
 
-## Current milestone: Gold recovery and reliability
+# Production Retail Data Platform — TODO
 
-### Immediate tasks
-- [ ] Verify Gold-only recovery is business-idempotent across repeated runs.
-- [ ] Compare recovered Gold against active Gold using `exceptAll()`.
-- [ ] Verify historical recovery does not modify active Gold.
-- [ ] Confirm missing input batch fails before publishing.
-- [ ] Verify normal Gold processing still works through the orchestrator.
-- [ ] Review and commit the completed Gold recovery changes.
-- [ ] Update the learning log with final test results.
+Last updated: October 29, 2026
 
-## Milestone 2 — Orchestration and recovery
+## CURRENT MILESTONE
+Gold Recovery VERIFIED
+Audit MERGE Initial Implementation TESTED
+Audit Conflict Detection PENDING VERIFICATION
 
-- [ ] Record Silver input Delta version in audit metadata.
-- [ ] Populate `source_batch_id` consistently in orchestrator audit records.
-- [ ] Standardize audit statuses (`SUCCESS`, `FAILED`).
-- [ ] Add `recovery_of_run_id` for recovery lineage.
-- [ ] Separate current processing run ID from original ingestion run ID.
-- [ ] Implement Gold-only recovery through the orchestrator.
-- [ ] Track stage attempt numbers and outcomes.
-- [ ] Handle partial Silver/Quarantine publishing failures.
-- [ ] Implement retry-safe audit persistence with Delta MERGE.
-- [ ] Design durable audit recovery after driver or process failure.
+---
 
-## Milestone 3 — Incremental processing and idempotency
+## 1. Immediate Next Session
 
-- [ ] Implement input file fingerprinting.
-- [ ] Create an ingestion ledger to prevent duplicate source ingestion.
-- [ ] Define stable record identities and deterministic order sequencing.
-- [ ] Implement incremental Bronze ingestion.
-- [ ] Implement incremental Silver using Delta MERGE.
-- [ ] Handle inserted, updated and deleted source records.
-- [ ] Design correct cumulative Gold aggregation.
-- [ ] Handle order amount, status and region changes.
-- [ ] Study Delta Change Data Feed and change-based processing.
-- [ ] Implement safe retries without duplicate business contributions.
+- [ ] Confirm corrected audit conflict-detection code.
+- [ ] Run the complete four-case audit integration test.
+- [ ] Verify new audit record insertion.
+- [ ] Verify identical retry does not duplicate data.
+- [ ] Verify conflicting retry raises AUDIT_CONFLICT.
+- [ ] Verify a different pipeline_run_id inserts correctly.
+- [ ] Inspect Delta history after testing.
+- [ ] Review git diff and git status.
+- [ ] Commit tested audit changes.
+- [ ] Update PROJECT_STATE.md with test evidence and commit SHA.
 
-## Milestone 4 — Production quality
+## 2. Gold Recovery
 
-- [ ] Create pytest unit tests for validation and transformation logic.
-- [ ] Add integration tests using temporary Delta tables.
-- [ ] Test malformed data, missing customers and duplicate orders.
-- [ ] Test Silver, Gold and audit failures.
-- [ ] Add record-level reconciliation and data-quality assertions.
-- [ ] Introduce structured logging and meaningful error messages.
-- [ ] Complete README, architecture diagram and dependency manifest.
-- [ ] Set up automated testing through GitHub Actions or Azure DevOps.
+- [x] Implement Gold-only recovery using versionAsOf.
+- [x] Support separate recovery output path.
+- [x] Verify historical Silver version 8.
+- [x] Verify four regional Gold rows.
+- [x] Verify total Completed revenue = $2,776.50.
+- [x] Re-execute Gold recovery.
+- [x] Confirm Recovery Gold version 1 -> 2.
+- [x] Confirm Active Gold remains version 5.
+- [x] Verify bidirectional exceptAll differences = 0.
+- [ ] Record input Silver version in audit metadata.
+- [ ] Record recovery execution identity.
+- [ ] Test recovery when selected Silver batch is missing.
+- [ ] Verify normal Gold processing through the orchestrator.
+- [ ] Review and commit recovery code changes.
 
-## Milestone 5 — Spark and Delta performance
+## 3. Audit Reliability
 
-- [ ] Analyze logical and physical execution plans.
-- [ ] Understand shuffle stages, tasks and partitions.
-- [ ] Practice broadcast joins and Adaptive Query Execution.
-- [ ] Study caching, persistence and recomputation.
-- [ ] Investigate data skew and expensive joins.
-- [ ] Study Delta OPTIMIZE, compaction, VACUUM and retention.
-- [ ] Benchmark realistic data volumes.
+- [x] Understand Delta append retry duplication risk.
+- [x] Implement initial insert-only audit MERGE.
+- [x] Match using pipeline_run_id.
+- [x] Support optional audit_path for isolated testing.
+- [x] Test initial audit insertion.
+- [x] Test identical retry.
+- [x] Verify conflicting status is silently skipped by initial MERGE.
+- [ ] Implement explicit AUDIT_CONFLICT detection.
+- [ ] Verify conflict-detection logic using integration tests.
+- [ ] Test existing duplicate pipeline_run_id records.
+- [ ] Define final audit status transition rules.
+- [ ] Define concurrency and retry policy.
+- [ ] Handle commit succeeded / acknowledgement lost scenario.
+- [ ] Create automated audit pytest tests.
+- [ ] Verify audit writer with normal orchestration.
 
-## Milestone 6 — Azure Data Engineering
+## 4. Orchestration and Recovery
 
-### Azure foundations and ADLS Gen2
-- [ ] Entra ID, tenants, subscriptions and resource groups.
-- [ ] Create and navigate Azure Storage resources.
-- [ ] Understand containers, directories and hierarchical namespace.
-- [ ] Practice RBAC, ACLs and managed identity authentication.
-- [ ] Design Bronze/Silver/Gold storage in ADLS Gen2.
-- [ ] Connect Spark and Delta Lake to cloud storage.
+- [ ] Fix orchestrator audit source_batch_id assignment.
+- [ ] Standardize SUCCESS and FAILED status values.
+- [ ] Track source_silver_version.
+- [ ] Track recovery_of_run_id.
+- [ ] Distinguish original ingestion run from recovery execution.
+- [ ] Implement Gold-only recovery through orchestrator.
+- [ ] Handle partial stage failures.
+- [ ] Design safe Silver/Quarantine publication.
+- [ ] Record input and output Delta versions.
+- [ ] Add meaningful structured logs.
+- [ ] Introduce stage-level attempt tracking.
+- [ ] Test recovery without reingesting Bronze.
+
+## 5. Incremental Data Engineering
+
+### Bronze
+- [ ] Implement source file fingerprinting.
+- [ ] Create ingestion ledger.
+- [ ] Prevent repeated ingestion of identical files.
+- [ ] Handle new and changed source files.
+- [ ] Track source version and source record identity.
+
+### Silver
+- [ ] Implement incremental Silver MERGE.
+- [ ] Define deterministic deduplication.
+- [ ] Handle late-arriving records.
+- [ ] Handle source corrections.
+- [ ] Handle updated and deleted orders.
+- [ ] Prevent duplicate contributions.
+- [ ] Improve customer lookup deduplication.
+- [ ] Add record-level reconciliation.
+
+### Gold
+- [ ] Define cumulative Gold table grain.
+- [ ] Implement incremental Gold updates.
+- [ ] Handle order amount changes.
+- [ ] Handle region changes.
+- [ ] Handle Completed -> Cancelled changes.
+- [ ] Prevent double counting during retries.
+- [ ] Study Delta Change Data Feed.
+
+## 6. Automated Testing
+
+- [ ] Add pytest tests for Bronze transformations.
+- [ ] Add pytest tests for Silver validations.
+- [ ] Add tests for rejection reasons.
+- [ ] Add customer join and fan-out tests.
+- [ ] Add deterministic deduplication tests.
+- [ ] Add Gold aggregation tests.
+- [ ] Add audit MERGE regression tests.
+- [ ] Add recovery and failure-injection tests.
+- [ ] Add record-level reconciliation tests.
+- [ ] Configure GitHub Actions testing.
+- [ ] Add dependency and environment documentation.
+
+## 7. Spark Performance
+
+- [ ] Study logical and physical execution plans.
+- [ ] Understand stages, tasks, executors and partitions.
+- [ ] Practice Spark shuffle troubleshooting.
+- [ ] Study broadcast joins.
+- [ ] Study Adaptive Query Execution.
+- [ ] Practice caching and persistence.
+- [ ] Understand data skew.
+- [ ] Study partitioning strategies.
+- [ ] Learn Delta OPTIMIZE and compaction.
+- [ ] Understand VACUUM and retention.
+- [ ] Benchmark larger retail datasets.
+
+## 8. Azure Data Engineering
+
+### ADLS Gen2
+- [ ] Understand Azure storage accounts.
+- [ ] Understand hierarchical namespace.
+- [ ] Create containers and directories.
+- [ ] Configure Bronze/Silver/Gold storage.
+- [ ] Study Entra ID and managed identities.
+- [ ] Understand RBAC and ACLs.
+- [ ] Connect PySpark to ADLS Gen2.
 
 ### Azure Data Factory
-- [ ] Explore ADF Studio: Author, Monitor and Manage.
-- [ ] Configure Integration Runtime, linked services and datasets.
-- [ ] Build Copy activity and parameterized pipelines.
-- [ ] Learn ForEach, Lookup, Get Metadata and conditional activities.
-- [ ] Configure schedule, event and tumbling-window triggers.
-- [ ] Implement retries, failure dependencies, monitoring and alerts.
-- [ ] Integrate Azure DevOps Git and CI/CD.
-- [ ] Orchestrate the retail data pipeline.
+- [ ] Explore ADF Studio.
+- [ ] Study Author, Monitor and Manage.
+- [ ] Configure linked services.
+- [ ] Configure datasets.
+- [ ] Understand Integration Runtime.
+- [ ] Build Copy activity.
+- [ ] Implement parameterized pipelines.
+- [ ] Learn Lookup, ForEach and Get Metadata.
+- [ ] Configure triggers.
+- [ ] Implement retry and failure handling.
+- [ ] Monitor pipeline executions.
+- [ ] Integrate ADF with the retail project.
 
 ### Azure Databricks
-- [ ] Navigate Databricks workspace and compute configuration.
-- [ ] Run PySpark notebooks against Delta tables.
-- [ ] Learn Unity Catalog and access control.
-- [ ] Configure jobs and workflows.
-- [ ] Practice performance optimization and troubleshooting.
-- [ ] Deploy the retail transformations.
+- [ ] Explore Databricks workspace.
+- [ ] Understand compute configuration.
+- [ ] Run PySpark notebooks.
+- [ ] Implement Delta tables.
+- [ ] Study Unity Catalog.
+- [ ] Configure Databricks Jobs.
+- [ ] Integrate Databricks with ADLS.
+- [ ] Connect Databricks with ADF.
+- [ ] Practice troubleshooting and optimization.
 
 ### Azure Synapse Analytics
 - [ ] Explore Synapse Studio.
-- [ ] Compare serverless SQL, dedicated SQL pools and Spark pools.
-- [ ] Query lake data through SQL.
-- [ ] Understand external tables and analytical serving.
-- [ ] Compare Synapse, Databricks and Fabric architectures.
+- [ ] Understand serverless SQL.
+- [ ] Understand dedicated SQL pools.
+- [ ] Query Delta/Parquet lake data.
+- [ ] Explore external tables.
+- [ ] Compare Synapse and Databricks.
+- [ ] Understand analytical serving.
 
 ### Microsoft Purview
-- [ ] Understand governance, cataloging and metadata discovery.
+- [ ] Understand data governance.
 - [ ] Explore Data Map and Unified Catalog.
-- [ ] Configure data sources and scanning where available.
-- [ ] Learn sensitivity classification and lineage.
-- [ ] Trace retail source-to-Gold data lineage.
+- [ ] Learn metadata scanning.
+- [ ] Study classification.
+- [ ] Understand data lineage.
+- [ ] Trace source-to-Gold lineage.
 
 ### Microsoft Fabric
-- [ ] Explore OneLake, Lakehouse and Warehouse.
-- [ ] Learn Fabric Data Factory pipelines.
-- [ ] Compare Fabric with ADF, Synapse and Databricks.
+- [ ] Explore OneLake.
+- [ ] Explore Fabric Lakehouse.
+- [ ] Explore Fabric Warehouse.
+- [ ] Understand Fabric pipelines.
+- [ ] Compare Fabric with Synapse and Databricks.
 
-## Milestone 7 — Production deployment and operations
+## 9. Production Operations
 
-- [ ] Airflow DAGs, scheduling, retries and monitoring.
-- [ ] CI/CD, environment configuration and secrets management.
-- [ ] Azure Key Vault and Azure Monitor.
-- [ ] Storage security and network controls.
-- [ ] Cost estimation and optimization.
-- [ ] Disaster recovery and operational runbooks.
-- [ ] Kafka and Spark Structured Streaming fundamentals.
+- [ ] Study Airflow orchestration.
+- [ ] Build a basic Airflow DAG.
+- [ ] Configure retries and monitoring.
+- [ ] Implement CI/CD.
+- [ ] Study Azure Key Vault.
+- [ ] Study Azure Monitor.
+- [ ] Understand cloud security.
+- [ ] Understand environment management.
+- [ ] Add operational runbooks.
+- [ ] Learn disaster recovery.
+- [ ] Understand cloud cost optimization.
+- [ ] Study Kafka and Spark Structured Streaming.
 
-## Interview preparation — Throughout all milestones
+## 10. Interview Preparation — Ongoing
 
-- [ ] Advanced SQL exercises.
-- [ ] Python coding and debugging exercises.
-- [ ] Spark transformations and execution-plan questions.
-- [ ] Delta MERGE and idempotency scenarios.
-- [ ] ADF/ADLS/Databricks/Synapse/Purview interview questions.
-- [ ] System design and production troubleshooting.
-- [ ] Timed mock interviews every two weeks.
-- [ ] Explain the complete retail capstone without referring to notes.
+- [ ] Practice advanced SQL questions.
+- [ ] Practice Python coding questions.
+- [ ] Explain Spark transformations and shuffles.
+- [ ] Explain Delta MERGE and idempotency.
+- [ ] Explain Bronze/Silver/Gold architecture.
+- [ ] Practice ADF and Databricks scenarios.
+- [ ] Practice ADLS security questions.
+- [ ] Practice pipeline failure investigations.
+- [ ] Practice system design.
+- [ ] Complete timed mock interviews.
+- [ ] Explain the retail architecture independently.
 
-## Final capstone deliverable
+---
 
-An end-to-end, documented and tested retail data platform demonstrating ingestion, validation, incremental processing, Delta Lake, orchestration, audit, recovery, Azure integration, monitoring, security and analytical reporting.
+## Final Project Goal
+
+Build an end-to-end Azure Retail Data Engineering Platform
+demonstrating:
+
+- Source ingestion
+- Bronze, Silver and Gold architecture
+- Data validation and quarantine
+- Incremental processing
+- Deterministic deduplication
+- Delta Lake transactions
+- Idempotent operations
+- Pipeline orchestration
+- Audit and lineage
+- Disaster recovery
+- Automated testing
+- CI/CD
+- Azure Data Factory
+- ADLS Gen2
+- Azure Databricks
+- Analytical querying
+- Governance and monitoring
+
+The final deliverable should be a documented, tested,
+demonstrable project suitable for Data Engineering interviews.

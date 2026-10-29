@@ -354,3 +354,275 @@ After applying the batch filters and rerunning Silver:
 - Pipeline audit uses append and is not retry-safe.
 - Gold recovery is callable manually, but is not yet integrated into an orchestrated recovery workflow.
 - Automated integration tests are not yet implemented.
+
+
+## October 29, 2026 — Gold Recovery and Audit MERGE
+
+### Session objectives
+- Verify historical Gold recovery and idempotency.
+- Understand Delta transaction history.
+- Implement retry-safe audit insertion using Delta MERGE.
+- Investigate conflicting audit records.
+- Practice production Data Engineering interview questions.
+
+### 1. Gold Recovery — VERIFIED
+
+Recovery configuration:
+- Silver version: 8
+- Source batch: 20261024_042204_ab58a267
+- Recovery destination: data/gold/recovery_test
+
+Results:
+- Active Gold version before: 5
+- Recovery Gold version before: 1
+- Active Gold version after: 5
+- Recovery Gold version after: 2
+- Gold regional rows: 4
+- Total Completed orders: 8
+- Total revenue: $2,776.50
+- Bidirectional exceptAll differences: 0
+
+Regional results:
+- East: 4 orders, $1,500.75
+- North: 2 orders, $950.00
+- South: 1 order, $175.25
+- West: 1 order, $150.50
+
+Key learning:
+- Delta tables maintain independent version histories.
+- versionAsOf selects a historical source snapshot.
+- source_batch_id selects the intended source batch.
+- Overwrite can create a new Delta version even when results are identical.
+- Repeated business results do not guarantee transaction-level idempotency.
+- Historical recovery should not modify Active Gold.
+- Identical output does not prove identical source-snapshot lineage.
+
+### 2. Gold Verification Using exceptAll()
+
+Implemented a bidirectional comparison:
+
+```python
+differences = (
+    active.select(*columns)
+    .exceptAll(recovered.select(*columns))
+    .count()
+    +
+    recovered.select(*columns)
+    .exceptAll(active.select(*columns))
+    .count()
+)
+```
+
+Verified differences = 0.
+
+Key learning:
+- Equal row counts do not guarantee equal data.
+- exceptAll preserves duplicate multiplicities.
+- Comparing in both directions detects missing or extra records.
+- Columns must be selected in matching order.
+
+### 3. Audit MERGE Implementation — INITIAL VERSION TESTED
+
+Modified:
+src/pipeline_audit.py
+
+Previous implementation:
+- Delta append.
+- Retrying an audit write could create duplicate records.
+
+New implementation:
+- Optional audit_path for isolated testing.
+- Check whether the Delta table exists.
+- Insert a new run using MERGE.
+- Skip an existing pipeline_run_id.
+
+```python
+if DeltaTable.isDeltaTable(spark, path):
+    (
+        DeltaTable.forPath(spark, path)
+        .alias("t")
+        .merge(
+            audit_df.alias("s"),
+            "t.pipeline_run_id = s.pipeline_run_id"
+        )
+        .whenNotMatchedInsertAll()
+        .execute()
+    )
+else:
+    audit_df.write.format("delta") \
+        .mode("errorifexists") \
+        .save(path)
+```
+
+Key learning:
+- pipeline_run_id identifies one pipeline execution.
+- source_batch_id identifies the source batch being processed.
+- Multiple pipeline executions may process the same source batch.
+- WHEN NOT MATCHED inserts new records.
+- Without WHEN MATCHED logic, existing rows remain unchanged.
+- MERGE does not automatically enforce a database-style unique constraint.
+
+### 4. Audit Integration Tests — VERIFIED
+
+Test 1: Initial insertion
+- Incoming: TEST-RUN-001 SUCCESS
+- Result: 1 audit record
+- Status: PASSED
+
+Test 2: Identical retry
+- Incoming: TEST-RUN-001 SUCCESS
+- Result: Still 1 record
+- Status: PASSED
+
+Test 3: Conflicting status with initial MERGE
+- Existing: TEST-RUN-001 SUCCESS
+- Incoming: TEST-RUN-001 FAILED
+- Result: Existing SUCCESS remained unchanged.
+- Status: PASSED for verifying current behavior.
+- Limitation: Conflict was silently ignored.
+
+Delta history:
+- Version: 0
+- Operation: WRITE
+- Mode: ErrorIfExists
+
+The tested identical retry did not create another Delta commit.
+
+Important:
+This behavior is not a universal guarantee for every Delta MERGE operation.
+
+### 5. Audit Conflict Detection — NOT YET VERIFIED
+
+Designed an enhancement to:
+- Find an existing audit record by pipeline_run_id.
+- Detect multiple existing records for the same run.
+- Compare incoming and existing audit data.
+- Raise AUDIT_CONFLICT if the values differ.
+- Skip an identical retry.
+- Insert a new execution.
+
+Code review identified four issues:
+1. Cross-DataFrame column comparison.
+2. Incorrect existing-record count condition.
+3. Using the literal string "key" instead of the loop variable.
+4. Referencing differences outside the conditional block.
+
+Corrections were provided.
+
+Pending:
+- Confirm corrected code is applied locally.
+- Run the new four-test integration suite.
+- Verify AUDIT_CONFLICT is raised.
+- Verify a second new run can be inserted.
+
+### 6. Delta Commit History and Troubleshooting
+
+Studied the following Delta history fields:
+- version
+- timestamp
+- operation
+- operationParameters
+- operationMetrics
+- userMetadata
+
+Production failure scenario:
+
+RUN100 reports Gold FAILED.
+
+Investigation:
+1. Inspect the Gold Delta transaction history.
+2. Check whether a Gold commit occurred during the execution.
+3. Examine write mode and operation metrics.
+4. Verify the committed Gold records.
+5. Compare relevant historical versions.
+6. Examine Spark exceptions and driver logs.
+7. Check userMetadata for execution lineage when available.
+
+Important:
+A pipeline reporting FAILED does not necessarily mean the Delta write failed.
+
+A commit near the failure timestamp suggests the write may have succeeded, but does not conclusively establish which execution produced it.
+
+Future improvement:
+Record pipeline_run_id, source_batch_id and source_silver_version in commit metadata.
+
+### 7. Recovery Execution Identity
+
+Example:
+
+RUN100:
+- source_batch_id = BATCH050
+- status = FAILED
+- failed_stage = GOLD
+
+RUN101:
+- source_batch_id = BATCH050
+- status = SUCCESS
+- execution_type = RECOVERY
+- recovery_of_run_id = RUN100
+
+Production principle:
+Preserve RUN100 as FAILED.
+Record RUN101 separately as SUCCESS.
+
+Do not overwrite historical execution outcomes simply because recovery succeeded.
+
+Recovery metadata fields above are proposed and not yet implemented in the audit schema.
+
+### 8. Concurrency and Delta Transactions
+
+Learned:
+- Delta Lake uses optimistic concurrency control.
+- Two jobs can read the same pre-write table state.
+- A separate conflict check followed by MERGE is not atomic.
+- Concurrent writes may generate conflicts.
+- MERGE alone does not guarantee uniqueness under all concurrent conditions.
+
+Future design:
+- Define conflict and retry policies.
+- Consider serialized audit writes.
+- Handle concurrent commit exceptions.
+- Recheck the persisted outcome before retrying.
+
+### 9. Interview Practice
+
+Topics covered:
+- Delta versioning and overwrite behavior.
+- Bidirectional data comparison.
+- MERGE matched and unmatched semantics.
+- Audit execution identity.
+- Gold commit acknowledgement failures.
+- Concurrency and atomicity.
+- Production troubleshooting.
+
+Selected scores:
+- Delta version reasoning: 8/10
+- Gold comparison explanation: 9/10
+- Gold failure investigation: 9/10
+
+Learning improvement:
+Explain not only what might have failed, but how to prove the root cause using transaction history, persisted data, metadata and execution logs.
+
+### End-of-session checkpoint
+
+VERIFIED:
+- Gold-only recovery repeated successfully.
+- Active Gold version remained unchanged.
+- Recovery Gold advanced to version 2.
+- Bidirectional Gold differences = 0.
+- Initial audit MERGE passed three isolated tests.
+
+IMPLEMENTED / UNDER REVIEW:
+- Audit conflict detection enhancement.
+
+PENDING:
+- Execute the updated four-test audit suite.
+- Validate explicit conflict rejection.
+- Test normal orchestrator behavior.
+- Populate source_batch_id in pipeline audit.
+- Implement recovery metadata.
+- Review Git diff and commit verified changes.
+
+No Git commit SHA has yet been confirmed.
+
+Next session starts with the four-case audit integration test.

@@ -7,6 +7,9 @@ StringType,
 StructType,
 StructField)
 from datetime import datetime, timezone
+from delta.tables import DeltaTable
+from pyspark.sql import functions as F
+
 
 ROOT=Path(__file__).resolve().parent.parent
 AUDIT_PATH=ROOT/"data"/"audit"/"orchestrator_runs"
@@ -28,6 +31,20 @@ StructField("completed_at",TimestampType(),False),
 ]))
 
 
-def write_pipeline_audit(spark,audit_data):
+def write_pipeline_audit(spark,audit_data,audit_path=AUDIT_PATH):
     audit_df=spark.createDataFrame([audit_data],schema=AUDIT_SCHEMA)
-    audit_df.write.format("delta").mode("append").save(str(AUDIT_PATH))
+    path=str(audit_path)
+    if DeltaTable.isDeltaTable(spark,path):
+        existing_records=spark.read.format("delta").load(path).filter(F.col("pipeline_run_id")==F.lit(audit_data["pipeline_run_id"])).limit(2).collect()
+        if len(existing_records)>1:
+            raise ValueError("DUPLICATE_AUDIT_RUN_ID DETECTED")
+        if existing_records:
+            existing=existing_records[0].asDict()
+            incoming=audit_df.first().asDict()
+            differences=[key for key in incoming if existing[key]!=incoming[key]]
+            if differences:
+                raise ValueError(f"AUDIT_CONFLICT: {differences}")
+        (DeltaTable.forPath(spark,path).alias("t").merge(audit_df.alias("s"),"t.pipeline_run_id=s.pipeline_run_id")
+        .whenNotMatchedInsertAll().execute())
+    else:
+        audit_df.write.format("delta").mode("errorifexists").save(path)
