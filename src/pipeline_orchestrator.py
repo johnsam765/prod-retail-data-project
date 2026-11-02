@@ -38,6 +38,7 @@ def run_pipeline():
         current_stage="BATCH_VALIDATION(BRONZE)"
         sales_bronze_count,customers_bronze_count=run_bronze(spark,pipeline_run_id)
         source_batch_id=get_source_batch_id(spark,SALES_BRONZE_PATH,pipeline_run_id)
+        audit_record["source_batch_id"] = source_batch_id
         audit_record["bronze_count"]=sales_bronze_count
         print("Bronze layer ran successfully")
         current_stage="DATA QUALITY(SILVER)"
@@ -53,7 +54,7 @@ def run_pipeline():
         audit_record["status"] = "SUCCESS"
 
     except Exception as error:
-        audit_record["status"]="Failed"
+        audit_record["status"]="FAILED"
         audit_record["failed_stage"]=current_stage
         audit_record["error_message"]=str(error)
         audit_record["completed_at"]=datetime.now(timezone.utc)

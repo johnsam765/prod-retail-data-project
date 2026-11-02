@@ -626,3 +626,210 @@ PENDING:
 No Git commit SHA has yet been confirmed.
 
 Next session starts with the four-case audit integration test.
+
+
+
+---
+
+## November 2, 2026 — Audit Reliability and Orchestrator Testing
+
+### Session objectives
+- Verify the corrected audit MERGE implementation.
+- Understand sequential and concurrent audit writes.
+- Improve orchestrator execution lineage.
+- Simulate pipeline failures without writing to Bronze.
+- Practice production Data Engineering interview questions.
+
+### 1. Audit MERGE — VERIFIED
+
+Modified: src/pipeline_audit.py
+
+Implemented:
+- Insert-only Delta MERGE using pipeline_run_id.
+- Optional audit_path for isolated tests.
+- Detection of duplicate existing audit run IDs.
+- Comparison of incoming and existing audit fields.
+- Explicit AUDIT_CONFLICT for conflicting retries.
+
+Four integration tests PASSED:
+
+1. New RUN001 SUCCESS — inserted successfully.
+2. Identical RUN001 retry — no duplicate created.
+3. Conflicting RUN001 FAILED — AUDIT_CONFLICT raised.
+4. New RUN002 SUCCESS — inserted successfully.
+
+Actual error:
+AUDIT_CONFLICT: ['status', 'failed_stage', 'error_message']
+
+Final audit table:
+- TEST-RUN-001 | TEST-BATCH-001 | SUCCESS
+- TEST-RUN-002 | TEST-BATCH-001 | SUCCESS
+
+Delta transaction history:
+- Version 0: WRITE / ErrorIfExists
+- Version 1: MERGE / Insert
+
+Learning:
+- pipeline_run_id identifies one execution.
+- source_batch_id identifies the source batch.
+- Multiple executions may process the same batch.
+- Identical retries should not duplicate audit records.
+- Conflicting retries must be detected.
+- No whenMatched action means an existing row stays unchanged.
+
+LIMITATION:
+The preliminary conflict check and MERGE are separate
+operations. Concurrent writers can create race conditions.
+
+Sequential reliability tested.
+Concurrent correctness not yet established.
+
+### 2. Orchestrator Metadata — IMPLEMENTED
+
+Modified: src/pipeline_orchestrator.py
+
+Change 1:
+Record the source batch after successful Bronze processing.
+
+```python
+source_batch_id = get_source_batch_id(
+    spark, SALES_BRONZE_PATH, pipeline_run_id
+)
+audit_record["source_batch_id"] = source_batch_id
+```
+
+Change 2:
+Standardize failure status.
+
+```python
+audit_record["status"] = "FAILED"
+```
+
+Purpose:
+- Preserve the source batch associated with an execution.
+- Improve debugging and recovery.
+- Use consistent audit status values.
+
+### 3. Mocked Silver Failure — VERIFIED
+
+Used unittest.mock with:
+- MagicMock
+- patch
+- Simulated successful Bronze
+- Simulated Silver exception
+- Mocked audit writer
+
+Simulated:
+- pipeline_run_id: TEST-RUN-100
+- Bronze Sales: 19
+- Bronze Customers: 10
+- source_batch_id: TEST-BATCH-050
+- Silver failure: RuntimeError
+
+Captured audit:
+- status: FAILED
+- failed_stage: DATA QUALITY(SILVER)
+- bronze_count: 19
+- source_batch_id: TEST-BATCH-050
+- silver_count: None
+- quarantine_count: None
+- gold_count: None
+- error_message: Simulated Silver failure
+
+Assertions passed:
+- Correct pipeline run identity.
+- Correct source batch identity.
+- Correct failure status and stage.
+- Bronze count retained.
+- Audit capture called once.
+- Spark cleanup called once.
+
+IMPORTANT:
+This was a control-flow test.
+
+No real Spark processing occurred.
+No Bronze or Silver Delta write occurred.
+No real Audit Delta write occurred.
+
+Actual persistence must be tested separately.
+
+### 4. Bronze Partial-Failure Discussion
+
+Scenario:
+- Sales Bronze write commits successfully.
+- Customers Bronze write fails.
+- Pipeline execution reports FAILED.
+
+Identified risks:
+- Blind full rerun appends Sales again.
+- run_bronze currently generates a new source_batch_id.
+- A failed Customers write does not imply source file changes.
+- Source fingerprint is not the same as ingestion completion.
+
+Potential recovery design:
+- Preserve stable source batch identity.
+- Track Sales and Customers completion independently.
+- Inspect Delta transaction history.
+- Verify expected input against persisted records.
+- Retry only incomplete processing where safe.
+
+### 5. Persisted Data Verification
+
+Discussed:
+- bronze_final_df.count() counts the input DataFrame.
+- It does not independently read persisted Bronze records.
+
+Verification should:
+1. Identify exact pipeline_run_id.
+2. Identify exact source_batch_id.
+3. Read the persisted Bronze Delta table.
+4. Compare expected and persisted counts.
+5. Compare record contents and duplicate multiplicities.
+
+Equal counts do not guarantee equal records.
+
+Bronze verification implementation is deferred to
+our planned Bronze reliability session.
+
+### 6. Production Interview Learning
+
+Key concepts:
+- Delta MERGE and idempotency.
+- Execution identity versus batch identity.
+- Time-of-check/time-of-use race conditions.
+- Delta optimistic concurrency.
+- Stage failure versus transaction failure.
+- Mock unit tests versus real integration tests.
+- Partial commits and recovery.
+- Record-level reconciliation.
+
+Important principle:
+
+A mocked successful audit call does not prove that
+an audit record was persisted to Delta Lake.
+
+### 7. Session Status
+
+VERIFIED:
+- Four isolated audit MERGE integration tests.
+- Explicit AUDIT_CONFLICT detection.
+- Mocked orchestrator Silver-failure control flow.
+- Audit source_batch_id in the simulated failure.
+- Standardized FAILED status.
+
+IMPLEMENTED LOCALLY:
+- Enhanced pipeline_audit.py.
+- Updated pipeline_orchestrator.py.
+
+PENDING:
+- Git diff review and commit SHA.
+- Permanent pytest regression tests.
+- Real orchestrator-to-audit persistence integration.
+- Concurrent audit writer protection.
+- Bronze partial-failure recovery design.
+- Source fingerprinting and ingestion ledger.
+
+Next:
+Convert mocked failure scenarios into repeatable pytest
+tests, complete Git checkpoint, then continue recovery
+and incremental ingestion design.
