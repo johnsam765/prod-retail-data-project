@@ -833,3 +833,36 @@ Next:
 Convert mocked failure scenarios into repeatable pytest
 tests, complete Git checkpoint, then continue recovery
 and incremental ingestion design.
+
+
+---
+
+## November 4, 2026 — Bronze Verification and SHA-256
+
+### Verified
+- Sales Bronze: 19 source vs 19 persisted; missing=0, extra=0.
+- Customers Bronze: 10 source vs 10 persisted; missing=0, extra=0.
+- Filtered by pipeline_run_id and source_batch_id.
+- Compared source business columns using bidirectional exceptAll().
+- Implemented src/source_fingerprint.py.
+- SHA-256 reads files in 1 MB binary chunks.
+- Identical file bytes produced identical hashes.
+- Reordered CSV rows produced different hashes.
+- Python syntax check passed.
+
+### Azure
+- Explored Azure Storage and Cost Management.
+- Inspected 22 existing storage accounts.
+- All 22 showed hierarchical namespace disabled.
+- No Azure resources created or changed.
+
+### Lessons
+- Equal record counts do not prove content equality.
+- SHA-256 verifies byte-level content, not logical row equality.
+- A fingerprint alone does not prevent duplicate ingestion.
+- An ingestion ledger is needed to track processing completion.
+
+### Pending
+- Turn manual Bronze comparison into automated tests.
+- Implement the ingestion ledger.
+- Obtain an approved Azure sandbox for practical deployment.

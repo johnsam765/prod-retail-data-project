@@ -1,16 +1,18 @@
 
 # Production Retail Data Platform — TODO
 
-Last updated: November 2, 2026
+Last updated: November 4, 2026
 
 ## CURRENT MILESTONE
 
 - Gold Recovery: VERIFIED
-- Audit MERGE: IMPLEMENTED AND TESTED
-- Audit Conflict Detection: VERIFIED
-- Orchestrator Audit Metadata: MOCK-TESTED
-- Concurrent Audit Safety: NOT IMPLEMENTED
-- Git Commit: NOT YET CONFIRMED
+- Audit MERGE and Conflict Detection: VERIFIED
+- Orchestrator Failure Testing: VERIFIED
+- Bronze Source/Persisted Verification: VERIFIED
+- SHA-256 File Fingerprinting: IMPLEMENTED AND TESTED
+- Bronze Ingestion Ledger: NOT IMPLEMENTED
+- ADLS Gen2: PORTAL EXPLORATION COMPLETED
+- Azure Deployment: NOT STARTED
 
 ---
 
@@ -34,17 +36,26 @@ Last updated: November 2, 2026
 - [x] Verify Spark cleanup in simulated failure.
 - [x] Understand mock testing versus Delta integration testing.
 
-### Next Priorities
 
-- [ ] Create permanent pytest tests for orchestrator failures.
-- [ ] Test Bronze failure using mocked pipeline stages.
-- [ ] Test successful orchestrator execution using mocks.
-- [ ] Review git diff and git status.
-- [ ] Commit verified audit and orchestrator changes.
-- [ ] Record Git commit SHA.
-- [ ] Update PROJECT_STATE.md with commit details.
-- [ ] Verify real orchestrator-to-audit Delta persistence.
-- [ ] Define safe audit concurrency handling.
+
+## NEXT SESSION — Bronze Ingestion Ledger
+
+Objective:
+Use the existing SHA-256 fingerprints to track
+source ingestion and prevent unnecessary duplicates.
+
+- [ ] Understand ingestion ledger design.
+- [ ] Define file identity and completion status.
+- [ ] Design ledger Delta schema.
+- [ ] Implement one small ledger component.
+- [ ] Test new and previously ingested files.
+- [ ] Verify retry behavior.
+- [ ] Practice interview questions.
+- [ ] Update documentation and Git checkpoint.
+
+Following milestone:
+Incremental Silver MERGE and deterministic deduplication.
+
 
 ### Current Learning Focus
 
@@ -210,16 +221,21 @@ or persist records to Delta tables.
 
 ### Bronze
 
-- [ ] Implement source file fingerprinting.
+- [x] Implement source file fingerprinting using SHA-256.
+- [x] Test identical file fingerprints.
+- [x] Verify reordered CSV produces a different fingerprint.
+- [x] Inspect Sales and Customers Bronze schemas.
+- [x] Verify selected Sales Bronze batch: 19/19 records.
+- [x] Verify selected Customers Bronze batch: 10/10 records.
+- [x] Verify bidirectional exceptAll differences = 0.
 - [ ] Create ingestion ledger.
-- [ ] Prevent repeated ingestion of identical files.
+- [ ] Integrate SHA-256 fingerprints into Bronze ingestion.
+- [ ] Prevent repeated ingestion of identical completed files.
 - [ ] Handle new and changed source files.
 - [ ] Track source version and source record identity.
-- [ ] Implement persisted Bronze verification.
-- [ ] Compare source and persisted record counts.
-- [ ] Compare source and persisted record contents.
-- [ ] Test Sales commit followed by Customers failure.
-- [ ] Design safe partial-batch recovery.
+- [ ] Automate persisted Bronze verification with pytest.
+- [ ] Handle partial Sales/Customers ingestion failures.
+- [ ] Implement safe partial-batch recovery.
 
 ### Silver
 
@@ -289,8 +305,16 @@ or persist records to Delta tables.
 
 ### ADLS Gen2
 
-- [ ] Understand Azure storage accounts.
-- [ ] Understand hierarchical namespace.
+### ADLS Gen2
+
+- [x] Explore Azure Portal Storage overview.
+- [x] Inspect existing storage account configurations.
+- [x] Understand hierarchical namespace at a basic level.
+- [x] Review existing Azure resource group costs.
+- [ ] Obtain authorization for a development sandbox.
+- [ ] Understand Azure storage accounts in depth.
+- [ ] Create an approved ADLS Gen2 storage account.
+- [ ] Understand hierarchical namespace operations.
 - [ ] Create containers and directories.
 - [ ] Configure Bronze/Silver/Gold storage.
 - [ ] Study Entra ID and managed identities.
