@@ -834,79 +834,53 @@ Convert mocked failure scenarios into repeatable pytest
 tests, complete Git checkpoint, then continue recovery
 and incremental ingestion design.
 
-
 ---
 
-## November 4, 2026 — Bronze Verification and SHA-256
+## November 4, 2026 — Source verification, fingerprints and Azure exploration
 
-### Verified
-- Sales Bronze: 19 source vs 19 persisted; missing=0, extra=0.
-- Customers Bronze: 10 source vs 10 persisted; missing=0, extra=0.
-- Filtered by pipeline_run_id and source_batch_id.
-- Compared source business columns using bidirectional exceptAll().
-- Implemented src/source_fingerprint.py.
-- SHA-256 reads files in 1 MB binary chunks.
-- Identical file bytes produced identical hashes.
-- Reordered CSV rows produced different hashes.
-- Python syntax check passed.
+**Learning objective:** Distinguish file-level fingerprinting from proof that the expected source records were persisted.
 
-### Azure
-- Explored Azure Storage and Cost Management.
-- Inspected 22 existing storage accounts.
-- All 22 showed hierarchical namespace disabled.
-- No Azure resources created or changed.
+**What was done and verified**
+- Selected Sales Bronze batch: 19 source rows versus 19 persisted; bidirectional `exceptAll` differences = 0.
+- Selected Customers Bronze batch: 10 source rows versus 10 persisted; bidirectional `exceptAll` differences = 0.
+- Implemented `src/source_fingerprint.py` with chunked SHA-256 hashing; identical bytes produced the same digest, row reordering produced a different digest.
+- `python -m py_compile src/source_fingerprint.py` completed without errors. `git status --short` showed the new file as untracked at that point. **No commit/push verified.**
+- Viewed existing company Azure Storage accounts read-only; 22 visible accounts had hierarchical namespace disabled. No Azure workload was created.
 
-### Lessons
-- Equal record counts do not prove content equality.
-- SHA-256 verifies byte-level content, not logical row equality.
-- A fingerprint alone does not prevent duplicate ingestion.
-- An ingestion ledger is needed to track processing completion.
+**What I should be able to explain**
+- Why equal row counts do not prove identical content, and how bidirectional `exceptAll` differs from count comparison.
+- Why SHA-256 detects byte changes but does not establish whether ingestion has completed.
+- Why an existing Azure resource group does not mean new workloads are free.
 
-### Pending
-- Turn manual Bronze comparison into automated tests.
-- Implement the ingestion ledger.
-- Obtain an approved Azure sandbox for practical deployment.
+**Not completed:** Automated Bronze source comparison, ingestion ledger integration, real ADLS Gen2 deployment.
 
+**Self-check:** If two CSV files contain the same rows in a different order, why can SHA-256 differ even when their logical contents are equivalent?
 
+## November 5, 2026 — Standalone ingestion ledger
 
-## November 5, 2026 — Ingestion Ledger
+**Learning objective:** Separate source identity, execution identity and ingestion outcome.
 
-### Completed
-- Designed ingestion ledger schema using PySpark and Delta Lake.
-- Implemented find_successful_ingestion().
-- Implemented write_ingestion_record().
-- Added validation for required fields and ingestion status.
-- Added sequential duplicate-attempt detection.
-- Tested successful-ingestion lookup using temporary Delta tables.
-- Implemented tests for ledger writing and retry scenarios.
+**Implemented locally**
+- Defined `LEDGER_SCHEMA` for ingestion outcomes, including source fingerprint, run ID, batch ID, status and timestamps.
+- Implemented `find_successful_ingestion()` to return the most recent matching `SUCCESS` row, or `None` if no successful match exists.
+- Implemented `write_ingestion_record()` with required-field validation, terminal status validation, sequential duplicate-attempt rejection, and Delta create/append.
 
-### Verification
-- Lookup integration tests: PASSED (reported).
-- Writer implementation: completed.
-- Writer test results: reported done; output not independently reviewed.
-- Bronze integration: NOT STARTED.
-- Git commit/push: NOT CONFIRMED.
+**Evidence and boundaries**
+- User reported lookup tests passed against temporary Delta paths (missing ledger and successful lookup, including changed-hash/different-dataset checks).
+- User reported finishing the writer test step; its most recent terminal output was not shared. **Writer integration PASS remains unverified from output.**
+- No demonstrated connection between lookup/writer and the real Bronze ingestion function; duplicate Bronze prevention is **NOT** proven.
+- No Git commit/push confirmed.
 
-### Key Learning
-- Source identity: dataset_name + source_path + source_sha256.
-- pipeline_run_id identifies an execution, not source identity.
-- A SUCCESS ledger record helps identify previously processed files.
-- FAILED ingestion may have partially committed Bronze records.
-- Ledger and Bronze writes are not one atomic transaction.
-- Delta version numbers provide lineage, not full data-integrity proof.
+**Mistakes corrected during practice**
+- A matching successful ingestion lookup returns the previously successful **record** (such as RUN101), not `None`; the caller then decides to skip.
+- `.asDict()` is a Spark **Row** method, not a DataFrame method; use a bounded collection first.
+- Deduplication source identity uses dataset/path/fingerprint for this project; `pipeline_run_id` tracks attempts and is not part of the source identity key.
+- Retrying a missing ledger write alone does not prove that a preceding Bronze write committed. This was explained, but end-to-end recovery was **not** implemented.
 
-### Interview Practice
-Q1: Source identity and deduplication.
-Q2: Successful lookup after a failed attempt.
-Q3: Recovery after Bronze commits but ledger writing fails.
+**What I should be able to explain without notes**
+1. Why does changing a `pipeline_run_id` not make an unchanged source a new source version?
+2. What is returned when RUN100 failed but RUN101 succeeded for the same source?
+3. Why is a successful standalone ledger test insufficient to claim end-to-end Bronze idempotency?
 
-### Next Session
-- Connect fingerprinting and ledger lookup to Bronze.
-- Verify unchanged source is not ingested again.
-- Test modified source handling.
-- Demonstrate behavior using real Delta integration tests.
+**Next bounded milestone:** Verify writer test output; integrate the existing lookup into Bronze under isolated tests; demonstrate repeat-source behavior and changed-source handling. After this, proceed to incremental Silver MERGE. Advanced concurrent-writer/crash-recovery hardening remains deferred.
 
-### Reflection
-Implemented useful standalone ledger functionality.
-Session became unnecessarily complex.
-Next session must prioritize end-to-end functionality.

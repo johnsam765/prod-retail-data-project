@@ -1,7 +1,6 @@
-
 # Production Retail Data Platform — TODO
 
-Last updated: November 4, 2026
+Last updated: November 5, 2026
 
 ## CURRENT MILESTONE
 
@@ -10,9 +9,11 @@ Last updated: November 4, 2026
 - Orchestrator Failure Testing: VERIFIED
 - Bronze Source/Persisted Verification: VERIFIED
 - SHA-256 File Fingerprinting: IMPLEMENTED AND TESTED
-- Bronze Ingestion Ledger: NOT IMPLEMENTED
+- Bronze Ingestion Ledger: SCHEMA, LOOKUP AND WRITER IMPLEMENTED; NOT YET INTEGRATED
 - ADLS Gen2: PORTAL EXPLORATION COMPLETED
 - Azure Deployment: NOT STARTED
+- Git Commit/Push for Nov 4–5 changes: NOT CONFIRMED
+- Writer Integration Tests: USER REPORTED DONE; OUTPUT NOT REVIEWED
 
 ---
 
@@ -38,33 +39,22 @@ Last updated: November 4, 2026
 
 
 
-## NEXT SESSION — Bronze Ingestion Ledger
+## NEXT SESSION — Finish Bronze ledger integration (bounded milestone)
 
-Objective:
-Use the existing SHA-256 fingerprints to track
-source ingestion and prevent unnecessary duplicates.
+**Existing components, already done:** source fingerprint, ledger schema, successful-ingestion lookup, ledger writer. Do **not** redesign them.
 
-- [ ] Understand ingestion ledger design.
-- [ ] Define file identity and completion status.
-- [ ] Design ledger Delta schema.
-- [ ] Implement one small ledger component.
-- [ ] Test new and previously ingested files.
-- [ ] Verify retry behavior.
-- [ ] Practice interview questions.
-- [ ] Update documentation and Git checkpoint.
+**Only active tasks:**
+- [ ] Review the final writer test result or rerun the existing test suite; don't count an unreviewed result as verified.
+- [ ] Connect existing fingerprint lookup to the actual Bronze processing path.
+- [ ] Demonstrate an unchanged previously completed source does not append a second Bronze copy in a controlled Delta test.
+- [ ] Demonstrate a changed source is treated as a distinct source version.
+- [ ] Review `git status`, update these two documents briefly, and commit after tests pass.
 
-Following milestone:
-Incremental Silver MERGE and deterministic deduplication.
+**Definition of done:** A repeatable integration test demonstrates duplicate avoidance for successful sequential replays and correct behavior for changed input. This is **not** a claim of concurrency-safe exactly-once processing or crash recovery.
 
+**Immediately after this milestone:** Incremental Silver MERGE and deterministic deduplication. No additional Bronze hardening tasks unless a test reveals a blocking correctness defect.
 
-### Current Learning Focus
-
-- Pipeline execution identity.
-- Source batch identity.
-- Audit idempotency and conflict detection.
-- Recovery from partial pipeline failures.
-- Delta transaction reliability.
-- Reusable automated tests.
+**Deferred backlog (not session work):** partial-commit recovery, transaction coordination, and concurrent-writer protections.
 
 ---
 
@@ -199,9 +189,10 @@ or persist records to Delta tables.
 
 ### Remaining Orchestration Work
 
-- [ ] Convert mock script into permanent pytest tests.
+- [x] Add a permanent mocked Bronze-failure pytest test (reported passed Nov 2).
+- [ ] Add permanent pytest coverage for remaining orchestrator paths.
 - [ ] Test successful execution control flow.
-- [ ] Test Bronze failure control flow.
+- [x] Test mocked Bronze failure control flow using pytest (reported passed Nov 2).
 - [ ] Test Gold failure control flow.
 - [ ] Verify real audit persistence after failure.
 - [ ] Track source_silver_version.
@@ -228,7 +219,8 @@ or persist records to Delta tables.
 - [x] Verify selected Sales Bronze batch: 19/19 records.
 - [x] Verify selected Customers Bronze batch: 10/10 records.
 - [x] Verify bidirectional exceptAll differences = 0.
-- [ ] Create ingestion ledger.
+- [x] Create standalone ingestion ledger schema, successful lookup and writer (Nov 5).
+- [ ] Verify latest writer integration test result; no output reviewed.
 - [ ] Integrate SHA-256 fingerprints into Bronze ingestion.
 - [ ] Prevent repeated ingestion of identical completed files.
 - [ ] Handle new and changed source files.
@@ -262,7 +254,8 @@ or persist records to Delta tables.
 
 ## 6. Automated Testing
 
-- [ ] Add permanent pytest tests for orchestrator failure paths.
+- [x] Add a permanent pytest test for mocked Bronze failure (reported passed Nov 2).
+- [ ] Extend pytest to remaining orchestrator failure paths.
 - [ ] Add pytest tests for Bronze transformations.
 - [ ] Add pytest tests for Silver validations.
 - [ ] Add tests for rejection reasons.
@@ -302,8 +295,6 @@ or persist records to Delta tables.
 ---
 
 ## 8. Azure Data Engineering
-
-### ADLS Gen2
 
 ### ADLS Gen2
 
@@ -425,9 +416,11 @@ or persist records to Delta tables.
 
 ---
 
-## 11. Planned Learning Sequence
+## 11. Original November 2–6 Plan — historical reference only
 
-### November 2–6, 2026
+**This is the original schedule, not the current task list.** Actual progress diverged: November 4 completed Bronze source verification and SHA-256; November 5 completed standalone ledger functions instead of starting Silver MERGE. **Use Section 1 for the next session; do not revive unchecked items below as immediate tasks.**
+
+### November 2–6, 2026 (original plan)
 
 Monday:
 - [x] Audit MERGE verification.
@@ -458,7 +451,7 @@ Friday:
 - [ ] Senior-level interview scenarios.
 - [ ] Review weekly learning outcomes.
 
-Schedule may change based on verified implementation progress.
+Historical schedule retained to show the original intention. Future milestones do not automatically expand when new risks are identified.
 
 ---
 
