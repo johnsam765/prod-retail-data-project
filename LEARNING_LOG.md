@@ -866,3 +866,47 @@ and incremental ingestion design.
 - Turn manual Bronze comparison into automated tests.
 - Implement the ingestion ledger.
 - Obtain an approved Azure sandbox for practical deployment.
+
+
+
+## November 5, 2026 — Ingestion Ledger
+
+### Completed
+- Designed ingestion ledger schema using PySpark and Delta Lake.
+- Implemented find_successful_ingestion().
+- Implemented write_ingestion_record().
+- Added validation for required fields and ingestion status.
+- Added sequential duplicate-attempt detection.
+- Tested successful-ingestion lookup using temporary Delta tables.
+- Implemented tests for ledger writing and retry scenarios.
+
+### Verification
+- Lookup integration tests: PASSED (reported).
+- Writer implementation: completed.
+- Writer test results: reported done; output not independently reviewed.
+- Bronze integration: NOT STARTED.
+- Git commit/push: NOT CONFIRMED.
+
+### Key Learning
+- Source identity: dataset_name + source_path + source_sha256.
+- pipeline_run_id identifies an execution, not source identity.
+- A SUCCESS ledger record helps identify previously processed files.
+- FAILED ingestion may have partially committed Bronze records.
+- Ledger and Bronze writes are not one atomic transaction.
+- Delta version numbers provide lineage, not full data-integrity proof.
+
+### Interview Practice
+Q1: Source identity and deduplication.
+Q2: Successful lookup after a failed attempt.
+Q3: Recovery after Bronze commits but ledger writing fails.
+
+### Next Session
+- Connect fingerprinting and ledger lookup to Bronze.
+- Verify unchanged source is not ingested again.
+- Test modified source handling.
+- Demonstrate behavior using real Delta integration tests.
+
+### Reflection
+Implemented useful standalone ledger functionality.
+Session became unnecessarily complex.
+Next session must prioritize end-to-end functionality.
